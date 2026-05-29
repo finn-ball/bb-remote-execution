@@ -8,6 +8,7 @@ import (
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-remote-execution/internal/mock"
 	"github.com/buildbarn/bb-remote-execution/pkg/scheduler/initialsizeclass"
+	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/digest"
 	"github.com/buildbarn/bb-storage/pkg/proto/iscc"
 	"github.com/buildbarn/bb-storage/pkg/testutil"
@@ -15,6 +16,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -352,5 +354,25 @@ func TestFeedbackDrivenAnalyzer(t *testing.T) {
 		}, &stats)
 	})
 
-	// TODO: Are there more test cases we want to cover?
+	// Shows two different commands produce different reduced action digests
+	t.Run("DifferentCommandDigest", func(t *testing.T) {
+		getReducedActionDigest := func(arguments []string) digest.Digest {
+			data, err := proto.Marshal(&remoteexecution.Command{
+				Arguments: arguments,
+			})
+			require.NoError(t, err)
+			digestGenerator := exampleDigestFunction.NewGenerator(int64(len(data)))
+			_, err = digestGenerator.Write(data)
+			require.NoError(t, err)
+			reducedActionDigest, err := blobstore.GetReducedActionDigest(exampleDigestFunction, &remoteexecution.Action{
+				CommandDigest: digestGenerator.Sum().GetProto(),
+			})
+			require.NoError(t, err)
+			return reducedActionDigest
+		}
+
+		require.NotEqual(t,
+			getReducedActionDigest([]string{"compile", "external/tool-v1/input.cc"}),
+			getReducedActionDigest([]string{"compile", "external/tool-v2/input.cc"}))
+	})
 }
