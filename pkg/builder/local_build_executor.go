@@ -203,7 +203,14 @@ func (be *localBuildExecutor) Execute(ctx context.Context, filePool pool.FilePoo
 		)
 		return response
 	}
-	defer inputRootDirectory.Close()
+	defer func() {
+		if err := inputRootDirectory.Close(); err != nil {
+			attachErrorToExecuteResponse(
+				response,
+				util.StatusWrap(err, "Failed to close input root directory"),
+			)
+		}
+	}()
 
 	inputRootDigest, err := digestFunction.NewDigestFromProto(action.InputRootDigest)
 	if err != nil {

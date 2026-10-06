@@ -201,6 +201,10 @@ message BuildDirectoryConfiguration {
     // be set to ensure the file isn't checksum validated for every
     // individual read.
     VirtualBuildDirectoryConfiguration virtual = 2;
+
+    // Mount actiondfs input roots and use the normal runner and output
+    // uploader.
+    ActiondfsBuildDirectoryConfiguration actiondfs = 5;
   }
 
   // Runners to which to send requests to invoke build action commands.
@@ -503,4 +507,16 @@ message HttpExecutionTimeoutCompensator {
   // server is expected to let the request block until resumption needs
   // to be performed. The response shall use status "200 OK".
   string resume_url = 3;
+}
+
+message ActiondfsBuildDirectoryConfiguration {
+  string build_directory_path = 1;
+  string cache_directory_path = 2;
+  uint64 maximum_cache_file_count = 3;
+  int64 maximum_cache_size_bytes = 4;
+  // Maximum time for one lazy input fetch, including waiting for download
+  // capacity. Must be explicitly set to a positive duration.
+  //
+  // Recommended value: 300s
+  google.protobuf.Duration input_fetch_timeout = 5;
 }

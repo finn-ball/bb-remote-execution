@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -191,6 +194,8 @@ func main() {
 			var virtualBuildDirectory virtual.PrepopulatedDirectory
 			var handleAllocator virtual.StatefulHandleAllocator
 			var characterDeviceFactory virtual.CharacterDeviceFactory
+			var actiondfsCache *builder.ActiondfsFileCache
+			var actiondfsDirectoryPath string
 			var naiveBuildDirectory filesystem.DirectoryCloser
 			var fileFetcher re_cas.FileFetcher
 			var buildDirectoryCleaner cleaner.Cleaner
@@ -278,6 +283,52 @@ func main() {
 					return util.StatusWrap(err, "Invalid maximum writable file upload delay")
 				}
 				maximumWritableFileUploadDelay = backend.Virtual.MaximumWritableFileUploadDelay.AsDuration()
+			case *bb_worker.BuildDirectoryConfiguration_Actiondfs:
+				if runtime.GOOS != "linux" {
+					return status.Error(codes.InvalidArgument, "actiondfs requires Linux")
+				}
+				if prefetchingConfiguration != nil {
+					return status.Error(codes.InvalidArgument, "actiondfs access profiling is not implemented")
+				}
+				if err := backend.Actiondfs.InputFetchTimeout.CheckValid(); err != nil {
+					return util.StatusWrap(err, "Invalid actiondfs input fetch timeout")
+				}
+				actiondfsInputFetchTimeout := backend.Actiondfs.InputFetchTimeout.AsDuration()
+				if actiondfsInputFetchTimeout <= 0 {
+					return status.Error(codes.InvalidArgument, "actiondfs input fetch timeout must be positive")
+				}
+				actiondfsDirectoryPath = filepath.Clean(backend.Actiondfs.BuildDirectoryPath)
+				cachePath := filepath.Clean(backend.Actiondfs.CacheDirectoryPath)
+				if !filepath.IsAbs(actiondfsDirectoryPath) ||
+					actiondfsDirectoryPath == "/" || !filepath.IsAbs(cachePath) || cachePath == "/" ||
+					actiondfsDirectoryPath == cachePath ||
+					strings.HasPrefix(cachePath, actiondfsDirectoryPath+"/") ||
+					strings.HasPrefix(actiondfsDirectoryPath, cachePath+"/") {
+					return status.Error(codes.InvalidArgument, "actiondfs build and cache paths must be separate absolute directories")
+				}
+				naiveBuildDirectory, err = filesystem.NewLocalDirectory(path.LocalFormat.NewParser(actiondfsDirectoryPath))
+				if err != nil {
+					return util.StatusWrap(err, "Failed to open actiondfs build directory")
+				}
+				actiondfsCache, err = builder.NewActiondfsFileCache(
+					cachePath,
+					int(backend.Actiondfs.MaximumCacheFileCount),
+					backend.Actiondfs.MaximumCacheSizeBytes,
+					globalContentAddressableStorage,
+					inputDownloadConcurrencySemaphore,
+					actiondfsInputFetchTimeout,
+				)
+				if err != nil {
+					return util.StatusWrap(err, "Failed to create actiondfs file cache")
+				}
+				directoryCleaner := cleaner.NewDirectoryCleaner(naiveBuildDirectory, actiondfsDirectoryPath)
+				buildDirectoryCleaner = func(ctx context.Context) error {
+					if err := actiondfsCache.CheckHealthy(); err != nil {
+						return err
+					}
+					return directoryCleaner(ctx)
+				}
+				uploadBatchSize = 100
 			case *bb_worker.BuildDirectoryConfiguration_Native:
 				// Directory where actual builds take place.
 				nativeConfiguration := backend.Native
@@ -332,6 +383,10 @@ func main() {
 					return status.Error(codes.InvalidArgument, "Runner concurrency must be positive")
 				}
 				concurrencyLength := len(strconv.FormatUint(runnerConfiguration.Concurrency-1, 10))
+
+				if actiondfsCache != nil && len(runnerConfiguration.InputRootCharacterDeviceNodes) > 0 {
+					return status.Error(codes.InvalidArgument, "actiondfs does not support input root device nodes")
+				}
 
 				// Obtain raw device numbers of character
 				// devices that need to be available within the
@@ -426,6 +481,8 @@ func main() {
 							defaultAttributesSetter,
 							clock.SystemClock,
 						)
+					} else if actiondfsCache != nil {
+						buildDirectory = builder.NewActiondfsBuildDirectory(naiveBuildDirectory, actiondfsDirectoryPath, actiondfsCache, contentAddressableStorageWriter)
 					} else {
 						buildDirectory = builder.NewNaiveBuildDirectory(
 							naiveBuildDirectory,
