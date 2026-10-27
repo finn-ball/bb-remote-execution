@@ -311,8 +311,14 @@ func (bc *BuildClient) Run(ctx context.Context) (bool, error) {
 // LaunchWorkerThread launches a single routine that uses a build client
 // to repeatedly synchronizes against the scheduler, requesting a task
 // to execute.
-func LaunchWorkerThread(group program.Group, buildClient *BuildClient, workerName string) {
+func LaunchWorkerThread(group program.Group, buildClient *BuildClient, workerName string) <-chan struct{} {
+	done := make(chan struct{})
 	group.Go(func(ctx context.Context, siblingsGroup, dependenciesGroup program.Group) error {
+		defer close(done)
+		// Run may allow termination after scheduler state expires even while
+		// Execute is still returning. Cancel/join that execution before signalling
+		// the shutdown drain barrier or permitting service dependencies to stop.
+		defer buildClient.stopExecution()
 		generator := random.NewFastSingleThreadedGenerator()
 		for {
 			terminationStartedBeforeRun := ctx.Err() != nil
@@ -339,4 +345,5 @@ func LaunchWorkerThread(group program.Group, buildClient *BuildClient, workerNam
 			}
 		}
 	})
+	return done
 }

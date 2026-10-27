@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -191,6 +194,9 @@ func main() {
 			var virtualBuildDirectory virtual.PrepopulatedDirectory
 			var handleAllocator virtual.StatefulHandleAllocator
 			var characterDeviceFactory virtual.CharacterDeviceFactory
+			var actiondfsCache *builder.ActiondfsFileCache
+			var actiondfsWorkers []<-chan struct{}
+			var actiondfsDirectoryPath string
 			var naiveBuildDirectory filesystem.DirectoryCloser
 			var fileFetcher re_cas.FileFetcher
 			var buildDirectoryCleaner cleaner.Cleaner
@@ -278,6 +284,57 @@ func main() {
 					return util.StatusWrap(err, "Invalid maximum writable file upload delay")
 				}
 				maximumWritableFileUploadDelay = backend.Virtual.MaximumWritableFileUploadDelay.AsDuration()
+			case *bb_worker.BuildDirectoryConfiguration_Actiondfs:
+				if runtime.GOOS != "linux" {
+					return status.Error(codes.InvalidArgument, "actiondfs requires Linux")
+				}
+				if prefetchingConfiguration != nil {
+					return status.Error(codes.InvalidArgument, "actiondfs access profiling is not implemented")
+				}
+				if err := backend.Actiondfs.InputFetchTimeout.CheckValid(); err != nil {
+					return util.StatusWrap(err, "Invalid actiondfs input fetch timeout")
+				}
+				actiondfsInputFetchTimeout := backend.Actiondfs.InputFetchTimeout.AsDuration()
+				if actiondfsInputFetchTimeout <= 0 {
+					return status.Error(codes.InvalidArgument, "actiondfs input fetch timeout must be positive")
+				}
+				actiondfsDirectoryPath = filepath.Clean(backend.Actiondfs.BuildDirectoryPath)
+				cachePath := filepath.Clean(backend.Actiondfs.CacheDirectoryPath)
+				if !filepath.IsAbs(actiondfsDirectoryPath) ||
+					actiondfsDirectoryPath == "/" || !filepath.IsAbs(cachePath) || cachePath == "/" ||
+					actiondfsDirectoryPath == cachePath ||
+					strings.HasPrefix(cachePath, actiondfsDirectoryPath+"/") ||
+					strings.HasPrefix(actiondfsDirectoryPath, cachePath+"/") {
+					return status.Error(codes.InvalidArgument, "actiondfs build and cache paths must be separate absolute directories")
+				}
+				naiveBuildDirectory, err = filesystem.NewLocalDirectory(path.LocalFormat.NewParser(actiondfsDirectoryPath))
+				if err != nil {
+					return util.StatusWrap(err, "Failed to open actiondfs build directory")
+				}
+				actiondfsCache, err = builder.NewActiondfsFileCache(
+					cachePath,
+					int(backend.Actiondfs.MaximumCacheFileCount),
+					backend.Actiondfs.MaximumCacheSizeBytes,
+					globalContentAddressableStorage,
+					inputDownloadConcurrencySemaphore,
+					actiondfsInputFetchTimeout,
+				)
+				if err != nil {
+					return util.StatusWrap(err, "Failed to create actiondfs file cache")
+				}
+				// A sibling keeps CAS/RPC dependencies alive while retained mounts
+				// recover. A dependency hook would race their own shutdown.
+				launched := make(chan struct{})
+				defer close(launched)
+				builder.LaunchActiondfsDrain(siblingsGroup, launched, func() []<-chan struct{} { return actiondfsWorkers }, actiondfsCache)
+				directoryCleaner := cleaner.NewDirectoryCleaner(naiveBuildDirectory, actiondfsDirectoryPath)
+				buildDirectoryCleaner = func(ctx context.Context) error {
+					if err := actiondfsCache.CheckHealthy(); err != nil {
+						return err
+					}
+					return directoryCleaner(ctx)
+				}
+				uploadBatchSize = 100
 			case *bb_worker.BuildDirectoryConfiguration_Native:
 				// Directory where actual builds take place.
 				nativeConfiguration := backend.Native
@@ -333,6 +390,10 @@ func main() {
 				}
 				concurrencyLength := len(strconv.FormatUint(runnerConfiguration.Concurrency-1, 10))
 
+				if actiondfsCache != nil && len(runnerConfiguration.InputRootCharacterDeviceNodes) > 0 {
+					return status.Error(codes.InvalidArgument, "actiondfs does not support input root device nodes")
+				}
+
 				// Obtain raw device numbers of character
 				// devices that need to be available within the
 				// input root.
@@ -381,6 +442,10 @@ func main() {
 						uploadBatchSize,
 						outputUploadConcurrencySemaphore,
 					)
+					inputRootFlusher := contentAddressableStorageFlusher
+					if actiondfsCache != nil {
+						inputRootFlusher, contentAddressableStorageFlusher = builder.NewActiondfsOutputFlushers(contentAddressableStorageFlusher)
+					}
 					contentAddressableStorageWriter = blobstore.NewMetricsBlobAccess(
 						contentAddressableStorageWriter,
 						clock.SystemClock,
@@ -426,6 +491,8 @@ func main() {
 							defaultAttributesSetter,
 							clock.SystemClock,
 						)
+					} else if actiondfsCache != nil {
+						buildDirectory = builder.NewActiondfsBuildDirectory(naiveBuildDirectory, actiondfsDirectoryPath, actiondfsCache, contentAddressableStorageWriter, inputRootFlusher)
 					} else {
 						buildDirectory = builder.NewNaiveBuildDirectory(
 							naiveBuildDirectory,
@@ -558,7 +625,10 @@ func main() {
 						runnerConfiguration.Platform,
 						runnerConfiguration.SizeClass,
 					)
-					builder.LaunchWorkerThread(siblingsGroup, buildClient, string(workerName))
+					done := builder.LaunchWorkerThread(siblingsGroup, buildClient, string(workerName))
+					if actiondfsCache != nil {
+						actiondfsWorkers = append(actiondfsWorkers, done)
+					}
 				}
 			}
 		}

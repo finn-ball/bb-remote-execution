@@ -173,6 +173,7 @@ func (d *naiveBuildDirectory) UploadFile(ctx context.Context, name path.Componen
 	}
 	sizeBytes, err := file.Len()
 	if err != nil {
+		file.Close()
 		return digest.BadDigest, err
 	}
 
