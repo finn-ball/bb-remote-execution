@@ -154,7 +154,11 @@ message ApplicationConfiguration {
   // number of concurrent files to read from the Content Addressable
   // Storage (CAS) while prefetching.
   //
-  // This limit applied to the worker process as a whole; not individual
+  // When actiondfs build directories are used, the maximum number of
+  // concurrent input blobs to download into the backing file cache on
+  // demand.
+  //
+  // This limit applies to the worker process as a whole; not individual
   // worker threads.
   int64 input_download_concurrency = 28;
 
@@ -201,6 +205,10 @@ message BuildDirectoryConfiguration {
     // be set to ensure the file isn't checksum validated for every
     // individual read.
     VirtualBuildDirectoryConfiguration virtual = 2;
+
+    // Mount actiondfs input roots and use the normal runner and output
+    // uploader.
+    ActiondfsBuildDirectoryConfiguration actiondfs = 5;
   }
 
   // Runners to which to send requests to invoke build action commands.
@@ -503,4 +511,39 @@ message HttpExecutionTimeoutCompensator {
   // server is expected to let the request block until resumption needs
   // to be performed. The response shall use status "200 OK".
   string resume_url = 3;
+}
+
+message ActiondfsBuildDirectoryConfiguration {
+  // Directory containing the per-action input root mountpoints.
+  string build_directory_path = 1;
+
+  // Dedicated backing directory containing cached input blobs and
+  // writable per-action staging directories. Must be separate from the
+  // build directory and must not be shared with another worker.
+  //
+  // Cache limits apply only to input blobs, not staging or output files.
+  // Reserve additional disk space for these files.
+  string cache_directory_path = 2;
+
+  // Maximum number of cached input blobs. Must be positive.
+  //
+  // Fetched blobs remain pinned until their mounts are destroyed. The
+  // cache is shared by all runners using this build directory, so this
+  // limit must accommodate their concurrently retained inputs. Fetches
+  // fail if the cache is full and no blobs can be evicted.
+  uint64 maximum_cache_file_count = 3;
+
+  // Maximum total size of cached input blobs in bytes. Must be positive.
+  // Like the file count limit, this must accommodate inputs retained by
+  // concurrent mounts. This is not a quota on total backing disk usage.
+  int64 maximum_cache_size_bytes = 4;
+
+  // Maximum time for one worker-side lazy input fetch, including waiting
+  // for download capacity. Must be explicitly set to a positive duration.
+  // This excludes time waiting for the kernel's serialized fetch channel.
+  // Input stalls during execution consume the action's execution timeout;
+  // actiondfs does not provide storage-latency timeout compensation.
+  //
+  // Recommended value: 300s
+  google.protobuf.Duration input_fetch_timeout = 5;
 }
