@@ -2,6 +2,7 @@ package runner_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/buildbarn/bb-remote-execution/internal/mock"
@@ -13,6 +14,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"go.uber.org/mock/gomock"
 )
@@ -83,4 +85,44 @@ func TestCleanRunner(t *testing.T) {
 		require.NoError(t, err)
 		testutil.RequireEqualProto(t, response, obtainedResponse)
 	})
+}
+
+func TestCleanRunnerCompletionUnknown(t *testing.T) {
+	ctrl, ctx := gomock.WithContext(context.Background(), t)
+
+	baseRunner := mock.NewMockRunnerServer(ctrl)
+	baseCleaner := mock.NewMockCleaner(ctrl)
+	cleanRunner := runner.NewCleanRunner(baseRunner, cleaner.NewIdleInvoker(baseCleaner.Call))
+
+	request := &runner_pb.RunRequest{}
+	response := &runner_pb.RunResponse{}
+	unknown := fmt.Errorf("Failed to run command: %w", &runner.CompletionUnknownError{
+		Cause: status.Error(codes.DeadlineExceeded, "Processes did not exit"),
+	})
+
+	// Start a sibling first. Neither the uncertain action
+	// nor the sibling finishing may make the runner idle.
+	// Nested calls provide this ordering without goroutines.
+	baseCleaner.EXPECT().Call(ctx)
+	baseRunner.EXPECT().Run(ctx, testutil.EqProto(t, request)).DoAndReturn(func(ctx context.Context, request *runner_pb.RunRequest) (*runner_pb.RunResponse, error) {
+		baseRunner.EXPECT().Run(ctx, testutil.EqProto(t, request)).Return(nil, unknown)
+		_, err := cleanRunner.Run(ctx, request)
+		require.Same(t, unknown, err)
+		return response, nil
+	})
+	obtainedResponse, err := cleanRunner.Run(ctx, request)
+	require.NoError(t, err)
+	testutil.RequireEqualProto(t, response, obtainedResponse)
+
+	// Readiness checks and later calls must also retain the
+	// environment. Completion uncertainty is permanent for
+	// this runner, even if other calls complete successfully.
+	readinessRequest := &runner_pb.CheckReadinessRequest{}
+	baseRunner.EXPECT().CheckReadiness(ctx, testutil.EqProto(t, readinessRequest)).Return(&emptypb.Empty{}, nil)
+	_, err = cleanRunner.CheckReadiness(ctx, readinessRequest)
+	require.NoError(t, err)
+
+	baseRunner.EXPECT().Run(ctx, testutil.EqProto(t, request)).Return(response, nil)
+	_, err = cleanRunner.Run(ctx, request)
+	require.NoError(t, err)
 }

@@ -309,6 +309,15 @@ message VirtualBuildDirectoryConfiguration {
 }
 
 message RunnerConfiguration {
+  // Require a runner with per-attempt containment and an explicit completion
+  // acknowledgement. An older unary-only server is an error, never a fallback.
+  bool require_execution_completion = 18;
+  // Maximum time after cancellation to wait for the acknowledgement. On loss
+  // or timeout the entire configured build root is quarantined in this worker.
+  // Before restart or root reuse, deployment/operator recovery must confirm
+  // teardown of all prior action ownership domains.
+  google.protobuf.Duration execution_completion_timeout = 19;
+
   // GRPC endpoint to which to connect.
   buildbarn.configuration.grpc.ClientConfiguration endpoint = 1;
 

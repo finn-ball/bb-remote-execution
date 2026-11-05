@@ -432,6 +432,8 @@ func (x *VirtualBuildDirectoryConfiguration) GetCaseInsensitive() bool {
 
 type RunnerConfiguration struct {
 	state                                        protoimpl.MessageState                                  `protogen:"open.v1"`
+	RequireExecutionCompletion                   bool                                                    `protobuf:"varint,18,opt,name=require_execution_completion,json=requireExecutionCompletion,proto3" json:"require_execution_completion,omitempty"`
+	ExecutionCompletionTimeout                   *durationpb.Duration                                    `protobuf:"bytes,19,opt,name=execution_completion_timeout,json=executionCompletionTimeout,proto3" json:"execution_completion_timeout,omitempty"`
 	Endpoint                                     *grpc.ClientConfiguration                               `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
 	Concurrency                                  uint64                                                  `protobuf:"varint,2,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
 	InstanceNamePrefix                           string                                                  `protobuf:"bytes,13,opt,name=instance_name_prefix,json=instanceNamePrefix,proto3" json:"instance_name_prefix,omitempty"`
@@ -478,6 +480,20 @@ func (x *RunnerConfiguration) ProtoReflect() protoreflect.Message {
 // Deprecated: Use RunnerConfiguration.ProtoReflect.Descriptor instead.
 func (*RunnerConfiguration) Descriptor() ([]byte, []int) {
 	return file_github_com_buildbarn_bb_remote_execution_pkg_proto_configuration_bb_worker_bb_worker_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RunnerConfiguration) GetRequireExecutionCompletion() bool {
+	if x != nil {
+		return x.RequireExecutionCompletion
+	}
+	return false
+}
+
+func (x *RunnerConfiguration) GetExecutionCompletionTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.ExecutionCompletionTimeout
+	}
+	return nil
 }
 
 func (x *RunnerConfiguration) GetEndpoint() *grpc.ClientConfiguration {
@@ -805,9 +821,10 @@ const file_github_com_buildbarn_bb_remote_execution_pkg_proto_configuration_bb_w
 	"\x1ashuffle_directory_listings\x18\x03 \x01(\bR\x18shuffleDirectoryListings\x120\n" +
 	"\x14hidden_files_pattern\x18\x04 \x01(\tR\x12hiddenFilesPattern\x12e\n" +
 	"\"maximum_writable_file_upload_delay\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x1emaximumWritableFileUploadDelay\x12)\n" +
-	"\x10case_insensitive\x18\x06 \x01(\bR\x0fcaseInsensitive\"\xc4\n" +
-	"\n" +
-	"\x13RunnerConfiguration\x12M\n" +
+	"\x10case_insensitive\x18\x06 \x01(\bR\x0fcaseInsensitive\"\xe3\v\n" +
+	"\x13RunnerConfiguration\x12@\n" +
+	"\x1crequire_execution_completion\x18\x12 \x01(\bR\x1arequireExecutionCompletion\x12[\n" +
+	"\x1cexecution_completion_timeout\x18\x13 \x01(\v2\x19.google.protobuf.DurationR\x1aexecutionCompletionTimeout\x12M\n" +
 	"\bendpoint\x18\x01 \x01(\v21.buildbarn.configuration.grpc.ClientConfigurationR\bendpoint\x12 \n" +
 	"\vconcurrency\x18\x02 \x01(\x04R\vconcurrency\x120\n" +
 	"\x14instance_name_prefix\x18\r \x01(\tR\x12instanceNamePrefix\x12E\n" +
@@ -905,20 +922,21 @@ var file_github_com_buildbarn_bb_remote_execution_pkg_proto_configuration_bb_wor
 	17, // 13: buildbarn.configuration.bb_worker.VirtualBuildDirectoryConfiguration.mount:type_name -> buildbarn.configuration.filesystem.virtual.MountConfiguration
 	18, // 14: buildbarn.configuration.bb_worker.VirtualBuildDirectoryConfiguration.maximum_execution_timeout_compensation:type_name -> google.protobuf.Duration
 	18, // 15: buildbarn.configuration.bb_worker.VirtualBuildDirectoryConfiguration.maximum_writable_file_upload_delay:type_name -> google.protobuf.Duration
-	12, // 16: buildbarn.configuration.bb_worker.RunnerConfiguration.endpoint:type_name -> buildbarn.configuration.grpc.ClientConfiguration
-	19, // 17: buildbarn.configuration.bb_worker.RunnerConfiguration.platform:type_name -> build.bazel.remote.execution.v2.Platform
-	8,  // 18: buildbarn.configuration.bb_worker.RunnerConfiguration.worker_id:type_name -> buildbarn.configuration.bb_worker.RunnerConfiguration.WorkerIdEntry
-	9,  // 19: buildbarn.configuration.bb_worker.RunnerConfiguration.costs_per_second:type_name -> buildbarn.configuration.bb_worker.RunnerConfiguration.CostsPerSecondEntry
-	10, // 20: buildbarn.configuration.bb_worker.RunnerConfiguration.environment_variables:type_name -> buildbarn.configuration.bb_worker.RunnerConfiguration.EnvironmentVariablesEntry
-	12, // 21: buildbarn.configuration.bb_worker.CompletedActionLoggingConfiguration.client:type_name -> buildbarn.configuration.grpc.ClientConfiguration
-	20, // 22: buildbarn.configuration.bb_worker.PrefetchingConfiguration.file_system_access_cache:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
-	21, // 23: buildbarn.configuration.bb_worker.HttpExecutionTimeoutCompensator.http_client:type_name -> buildbarn.configuration.http.client.Configuration
-	22, // 24: buildbarn.configuration.bb_worker.RunnerConfiguration.CostsPerSecondEntry.value:type_name -> buildbarn.resourceusage.MonetaryResourceUsage.Expense
-	25, // [25:25] is the sub-list for method output_type
-	25, // [25:25] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	18, // 16: buildbarn.configuration.bb_worker.RunnerConfiguration.execution_completion_timeout:type_name -> google.protobuf.Duration
+	12, // 17: buildbarn.configuration.bb_worker.RunnerConfiguration.endpoint:type_name -> buildbarn.configuration.grpc.ClientConfiguration
+	19, // 18: buildbarn.configuration.bb_worker.RunnerConfiguration.platform:type_name -> build.bazel.remote.execution.v2.Platform
+	8,  // 19: buildbarn.configuration.bb_worker.RunnerConfiguration.worker_id:type_name -> buildbarn.configuration.bb_worker.RunnerConfiguration.WorkerIdEntry
+	9,  // 20: buildbarn.configuration.bb_worker.RunnerConfiguration.costs_per_second:type_name -> buildbarn.configuration.bb_worker.RunnerConfiguration.CostsPerSecondEntry
+	10, // 21: buildbarn.configuration.bb_worker.RunnerConfiguration.environment_variables:type_name -> buildbarn.configuration.bb_worker.RunnerConfiguration.EnvironmentVariablesEntry
+	12, // 22: buildbarn.configuration.bb_worker.CompletedActionLoggingConfiguration.client:type_name -> buildbarn.configuration.grpc.ClientConfiguration
+	20, // 23: buildbarn.configuration.bb_worker.PrefetchingConfiguration.file_system_access_cache:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
+	21, // 24: buildbarn.configuration.bb_worker.HttpExecutionTimeoutCompensator.http_client:type_name -> buildbarn.configuration.http.client.Configuration
+	22, // 25: buildbarn.configuration.bb_worker.RunnerConfiguration.CostsPerSecondEntry.value:type_name -> buildbarn.resourceusage.MonetaryResourceUsage.Expense
+	26, // [26:26] is the sub-list for method output_type
+	26, // [26:26] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() {

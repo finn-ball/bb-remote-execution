@@ -26,6 +26,7 @@ import (
 	"github.com/buildbarn/bb-remote-execution/pkg/proto/configuration/bb_worker"
 	"github.com/buildbarn/bb-remote-execution/pkg/proto/remoteworker"
 	runner_pb "github.com/buildbarn/bb-remote-execution/pkg/proto/runner"
+	"github.com/buildbarn/bb-remote-execution/pkg/runner"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	blobstore_configuration "github.com/buildbarn/bb-storage/pkg/blobstore/configuration"
 	"github.com/buildbarn/bb-storage/pkg/cas"
@@ -326,6 +327,7 @@ func main() {
 			}
 
 			buildDirectoryIdleInvoker := cleaner.NewIdleInvoker(buildDirectoryCleaner)
+			buildRootQuarantine := &builder.BuildRootQuarantine{}
 			var sharedBuildDirectoryNextParallelActionID atomic.Uint64
 			if len(buildDirectoryConfiguration.Runners) == 0 {
 				return status.Error(codes.InvalidArgument, "Cannot start worker without any runners")
@@ -373,6 +375,16 @@ func main() {
 					return util.StatusWrap(err, "Failed to create runner RPC client")
 				}
 				runnerClient := runner_pb.NewRunnerClient(runnerConnection)
+				if runnerConfiguration.RequireExecutionCompletion {
+					timeout := runnerConfiguration.ExecutionCompletionTimeout
+					if err := timeout.CheckValid(); err != nil {
+						return util.StatusWrap(err, "Invalid execution completion timeout")
+					}
+					if timeout.AsDuration() <= 0 {
+						return status.Error(codes.InvalidArgument, "Execution completion timeout must be positive")
+					}
+					runnerClient = runner.NewCompletionRunnerClient(runnerClient, runner_pb.NewExecutionControlClient(runnerConnection), timeout.AsDuration(), clock.SystemClock)
+				}
 
 				for threadID := uint64(0); threadID < runnerConfiguration.Concurrency; threadID++ {
 					// Features like the virtual file system
@@ -474,7 +486,7 @@ func main() {
 						return util.StatusWrap(err, "Failed to marshal worker ID")
 					}
 
-					buildExecutor := builder.NewLocalBuildExecutor(
+					buildExecutor := builder.NewLocalBuildExecutorWithQuarantine(
 						re_cas.NewExistencePreconditionReader(cas.NewMessageReader[remoteexecution.Command](localReadInfo, int(configuration.MaximumMessageSizeBytes))),
 						blobUploader,
 						buildDirectoryCreator,
@@ -484,6 +496,7 @@ func main() {
 						inputRootCharacterDevices,
 						runnerConfiguration.EnvironmentVariables,
 						configuration.ForceUploadTreesAndDirectories,
+						buildRootQuarantine,
 					)
 
 					if prefetchingConfiguration != nil {
