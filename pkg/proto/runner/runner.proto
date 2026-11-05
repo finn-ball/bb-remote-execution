@@ -4,6 +4,7 @@ package buildbarn.runner;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/empty.proto";
+import "google/rpc/status.proto";
 
 option go_package = "github.com/buildbarn/bb-remote-execution/pkg/proto/runner";
 
@@ -67,4 +68,24 @@ message RunResponse {
   // Runner-specific information on the amount of resources used during
   // execution.
   repeated google.protobuf.Any resource_usage = 2;
+}
+
+// Optional completion barrier. Registered only by runners that contain every
+// command and confirm descendant exit before sending a terminal response.
+service ExecutionControl {
+  rpc Run(stream ExecutionControlRequest) returns (stream ExecutionControlResponse);
+}
+
+message ExecutionControlRequest {
+  oneof request {
+    RunRequest run = 1;
+    google.protobuf.Empty cancel = 2;
+  }
+}
+
+message ExecutionControlResponse {
+  RunResponse result = 1;
+  google.rpc.Status execution_status = 2;
+  // Explicit acknowledgement that all processes exited (or never started).
+  bool completion_confirmed = 3;
 }
