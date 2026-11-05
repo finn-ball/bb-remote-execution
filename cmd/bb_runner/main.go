@@ -13,6 +13,7 @@ import (
 	runner_pb "github.com/buildbarn/bb-remote-execution/pkg/proto/runner"
 	"github.com/buildbarn/bb-remote-execution/pkg/proto/tmp_installer"
 	"github.com/buildbarn/bb-remote-execution/pkg/runner"
+	"github.com/buildbarn/bb-storage/pkg/clock"
 	"github.com/buildbarn/bb-storage/pkg/filesystem"
 	"github.com/buildbarn/bb-storage/pkg/filesystem/path"
 	"github.com/buildbarn/bb-storage/pkg/global"
@@ -63,12 +64,52 @@ func main() {
 		} else {
 			commandCreator = runner.NewPlainCommandCreator(sysProcAttr)
 		}
+		if configuration.CancelProcessGroup {
+			commandCreator, err = runner.NewProcessGroupCommandCreator(commandCreator)
+			if err != nil {
+				return util.StatusWrap(err, "Failed to create process group command creator")
+			}
+		}
 
-		r := runner.NewLocalRunner(
+		var lifecycleFactory runner.CommandLifecycleFactory
+		if configuration.PidNamespace != nil && (configuration.CgroupV2 != nil || configuration.CancelProcessGroup || configuration.CleanProcessTable) {
+			return status.Error(codes.InvalidArgument, "pid_namespace conflicts with cgroup_v2, cancel_process_group and clean_process_table")
+		}
+		if cgroup := configuration.CgroupV2; cgroup != nil {
+			if processTableCleaningUserID == os.Geteuid() {
+				return status.Error(codes.InvalidArgument, "cgroup_v2 requires run_commands_as with a different user ID from the runner")
+			}
+			if configuration.CancelProcessGroup {
+				return status.Error(codes.InvalidArgument, "cgroup_v2 conflicts with cancel_process_group")
+			}
+			if err := cgroup.CleanupTimeout.CheckValid(); err != nil {
+				return util.StatusWrap(err, "Invalid cgroup cleanup timeout")
+			}
+			lifecycleFactory, err = runner.NewCgroupCommandLifecycleFactory(cgroup.ParentPath, cgroup.CleanupTimeout.AsDuration(), clock.SystemClock)
+			if err != nil {
+				return util.StatusWrap(err, "Failed to configure cgroup containment")
+			}
+		}
+
+		if ns := configuration.PidNamespace; ns != nil {
+			if configuration.RunCommandsAs == nil || processTableCleaningUserID == 0 {
+				return status.Error(codes.InvalidArgument, "pid_namespace requires explicit non-root run_commands_as")
+			}
+			if err := ns.CleanupTimeout.CheckValid(); err != nil {
+				return util.StatusWrap(err, "Invalid PID namespace cleanup timeout")
+			}
+			lifecycleFactory, err = runner.NewPIDNamespaceCommandLifecycleFactory(ns.HelperPath, ns.CleanupTimeout.AsDuration(), ns.HelperUid, ns.HelperGid, sysProcAttr, clock.SystemClock)
+			if err != nil {
+				return util.StatusWrap(err, "Failed to configure PID namespace containment")
+			}
+		}
+
+		r := runner.NewLocalRunnerWithLifecycle(
 			buildDirectory,
 			buildDirectoryPath,
 			commandCreator,
 			configuration.SetTmpdirEnvironmentVariable,
+			lifecycleFactory,
 		)
 
 		// Let bb_runner replace temporary directories with symbolic
@@ -160,7 +201,12 @@ func main() {
 		if err := bb_grpc.NewServersFromConfigurationAndServe(
 			configuration.GrpcServers,
 			func(s grpc.ServiceRegistrar) {
-				runner_pb.RegisterRunnerServer(s, r)
+				if lifecycleFactory != nil {
+					runner_pb.RegisterRunnerServer(s, runner.NewCompletionRequiredRunner(r))
+					runner_pb.RegisterExecutionControlServer(s, runner.NewExecutionControlServer(r))
+				} else {
+					runner_pb.RegisterRunnerServer(s, r)
+				}
 			},
 			siblingsGroup,
 			grpcClientFactory,

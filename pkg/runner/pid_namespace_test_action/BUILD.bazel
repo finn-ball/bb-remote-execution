@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_binary(
+    name = "pid_namespace_test_action",
+    testonly = True,
+    embed = [":pid_namespace_test_action_lib"],
+    pure = "on",
+    static = "on",
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//pkg/runner:__pkg__"],
+)
+
+go_library(
+    name = "pid_namespace_test_action_lib",
+    testonly = True,
+    srcs = ["main_linux.go"],
+    importpath = "github.com/buildbarn/bb-remote-execution/pkg/runner/pid_namespace_test_action",
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:private"],
+)

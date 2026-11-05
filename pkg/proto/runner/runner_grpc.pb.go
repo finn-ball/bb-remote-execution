@@ -156,3 +156,97 @@ var Runner_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "github.com/buildbarn/bb-remote-execution/pkg/proto/runner/runner.proto",
 }
+
+const (
+	ExecutionControl_Run_FullMethodName = "/buildbarn.runner.ExecutionControl/Run"
+)
+
+// ExecutionControlClient is the client API for ExecutionControl service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type ExecutionControlClient interface {
+	Run(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecutionControlRequest, ExecutionControlResponse], error)
+}
+
+type executionControlClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewExecutionControlClient(cc grpc.ClientConnInterface) ExecutionControlClient {
+	return &executionControlClient{cc}
+}
+
+func (c *executionControlClient) Run(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecutionControlRequest, ExecutionControlResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ExecutionControl_ServiceDesc.Streams[0], ExecutionControl_Run_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ExecutionControlRequest, ExecutionControlResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ExecutionControl_RunClient = grpc.BidiStreamingClient[ExecutionControlRequest, ExecutionControlResponse]
+
+// ExecutionControlServer is the server API for ExecutionControl service.
+// All implementations should embed UnimplementedExecutionControlServer
+// for forward compatibility.
+type ExecutionControlServer interface {
+	Run(grpc.BidiStreamingServer[ExecutionControlRequest, ExecutionControlResponse]) error
+}
+
+// UnimplementedExecutionControlServer should be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedExecutionControlServer struct{}
+
+func (UnimplementedExecutionControlServer) Run(grpc.BidiStreamingServer[ExecutionControlRequest, ExecutionControlResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Run not implemented")
+}
+func (UnimplementedExecutionControlServer) testEmbeddedByValue() {}
+
+// UnsafeExecutionControlServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ExecutionControlServer will
+// result in compilation errors.
+type UnsafeExecutionControlServer interface {
+	mustEmbedUnimplementedExecutionControlServer()
+}
+
+func RegisterExecutionControlServer(s grpc.ServiceRegistrar, srv ExecutionControlServer) {
+	// If the following call pancis, it indicates UnimplementedExecutionControlServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ExecutionControl_ServiceDesc, srv)
+}
+
+func _ExecutionControl_Run_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ExecutionControlServer).Run(&grpc.GenericServerStream[ExecutionControlRequest, ExecutionControlResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ExecutionControl_RunServer = grpc.BidiStreamingServer[ExecutionControlRequest, ExecutionControlResponse]
+
+// ExecutionControl_ServiceDesc is the grpc.ServiceDesc for ExecutionControl service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ExecutionControl_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "buildbarn.runner.ExecutionControl",
+	HandlerType: (*ExecutionControlServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Run",
+			Handler:       _ExecutionControl_Run_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "github.com/buildbarn/bb-remote-execution/pkg/proto/runner/runner.proto",
+}

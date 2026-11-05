@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/buildbarn/bb-remote-execution/pkg/filesystem/pool"
 	"github.com/buildbarn/bb-remote-execution/pkg/proto/remoteworker"
 	runner_pb "github.com/buildbarn/bb-remote-execution/pkg/proto/runner"
+	"github.com/buildbarn/bb-remote-execution/pkg/runner"
 	"github.com/buildbarn/bb-storage/pkg/cas/reader"
 	"github.com/buildbarn/bb-storage/pkg/clock"
 	"github.com/buildbarn/bb-storage/pkg/digest"
@@ -70,6 +72,7 @@ type localBuildExecutor struct {
 	blobUploader                   re_cas.BlobUploader
 	buildDirectoryCreator          BuildDirectoryCreator
 	runner                         runner_pb.RunnerClient
+	quarantine                     *BuildRootQuarantine
 	clock                          clock.Clock
 	maximumWritableFileUploadDelay time.Duration
 	inputRootCharacterDevices      map[path.Component]filesystem.DeviceNumber
@@ -80,11 +83,18 @@ type localBuildExecutor struct {
 // NewLocalBuildExecutor returns a BuildExecutor that executes build
 // steps on the local system.
 func NewLocalBuildExecutor(commandReader reader.Reader[*remoteexecution.Command], blobUploader re_cas.BlobUploader, buildDirectoryCreator BuildDirectoryCreator, runner runner_pb.RunnerClient, clock clock.Clock, maximumWritableFileUploadDelay time.Duration, inputRootCharacterDevices map[path.Component]filesystem.DeviceNumber, environmentVariables map[string]string, forceUploadTreesAndDirectories bool) BuildExecutor {
+	return NewLocalBuildExecutorWithQuarantine(commandReader, blobUploader, buildDirectoryCreator, runner, clock, maximumWritableFileUploadDelay, inputRootCharacterDevices, environmentVariables, forceUploadTreesAndDirectories, &BuildRootQuarantine{})
+}
+
+// NewLocalBuildExecutorWithQuarantine shares a completion-failure latch with all
+// other executors using the same configured build root. quarantine must be nonnil.
+func NewLocalBuildExecutorWithQuarantine(commandReader reader.Reader[*remoteexecution.Command], blobUploader re_cas.BlobUploader, buildDirectoryCreator BuildDirectoryCreator, runner runner_pb.RunnerClient, clock clock.Clock, maximumWritableFileUploadDelay time.Duration, inputRootCharacterDevices map[path.Component]filesystem.DeviceNumber, environmentVariables map[string]string, forceUploadTreesAndDirectories bool, quarantine *BuildRootQuarantine) BuildExecutor {
 	return &localBuildExecutor{
 		blobUploader:                   blobUploader,
 		commandReader:                  commandReader,
 		buildDirectoryCreator:          buildDirectoryCreator,
 		runner:                         runner,
+		quarantine:                     quarantine,
 		clock:                          clock,
 		maximumWritableFileUploadDelay: maximumWritableFileUploadDelay,
 		inputRootCharacterDevices:      inputRootCharacterDevices,
@@ -111,6 +121,9 @@ func (be *localBuildExecutor) createCharacterDevices(inputRootDirectory BuildDir
 }
 
 func (be *localBuildExecutor) CheckReadiness(ctx context.Context) error {
+	if err := be.quarantine.check(); err != nil {
+		return err
+	}
 	buildDirectory, buildDirectoryPath, err := be.buildDirectoryCreator.GetBuildDirectory(ctx, nil)
 	if err != nil {
 		return util.StatusWrap(err, "Failed to get build directory")
@@ -131,6 +144,10 @@ func (be *localBuildExecutor) CheckReadiness(ctx context.Context) error {
 func (be *localBuildExecutor) Execute(ctx context.Context, filePool pool.FilePool, monitor access.UnreadDirectoryMonitor, digestFunction digest.Function, request *remoteworker.DesiredState_Executing, executionStateUpdates chan<- *remoteworker.CurrentState_Executing) *remoteexecution.ExecuteResponse {
 	// Timeout handling.
 	response := NewDefaultExecuteResponse(request)
+	if err := be.quarantine.check(); err != nil {
+		attachErrorToExecuteResponse(response, err)
+		return response
+	}
 	action := request.Action
 	if action == nil {
 		attachErrorToExecuteResponse(response, status.Error(codes.InvalidArgument, "Request does not contain an action"))
@@ -163,7 +180,11 @@ func (be *localBuildExecutor) Execute(ctx context.Context, filePool pool.FilePoo
 		)
 		return response
 	}
+	retainDirectories := false
 	defer func() {
+		if retainDirectories {
+			return
+		}
 		err := buildDirectory.Close()
 		if err != nil {
 			attachErrorToExecuteResponse(
@@ -203,7 +224,11 @@ func (be *localBuildExecutor) Execute(ctx context.Context, filePool pool.FilePoo
 		)
 		return response
 	}
-	defer inputRootDirectory.Close()
+	defer func() {
+		if !retainDirectories {
+			inputRootDirectory.Close()
+		}
+	}()
 
 	inputRootDigest, err := digestFunction.NewDigestFromProto(action.InputRootDigest)
 	if err != nil {
@@ -297,6 +322,16 @@ func (be *localBuildExecutor) Execute(ctx context.Context, filePool pool.FilePoo
 	})
 	cancelTimeout()
 	<-ctxWithTimeout.Done()
+
+	// Completion uncertainty overrides cancellation and I/O errors. Uploading or
+	// closing either reference here could expose a directory to live processes.
+	var unknown *runner.CompletionUnknownError
+	if errors.As(runErr, &unknown) {
+		retainDirectories = true
+		be.quarantine.retain(buildDirectoryPath.GetUNIXString(), unknown, buildDirectory, inputRootDirectory)
+		attachErrorToExecuteResponse(response, unknown)
+		return response
+	}
 
 	// If an I/O error occurred during execution, attach any errors
 	// related to it to the response first. These errors should be

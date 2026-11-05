@@ -71,6 +71,7 @@ type localRunner struct {
 	buildDirectoryPath           *path.Builder
 	commandCreator               CommandCreator
 	setTmpdirEnvironmentVariable bool
+	lifecycleFactory             CommandLifecycleFactory
 }
 
 func (r *localRunner) openLog(logPath string) (filesystem.FileAppender, error) {
@@ -127,15 +128,22 @@ func NewPlainCommandCreator(sysProcAttr *syscall.SysProcAttr) CommandCreator {
 // NewLocalRunner returns a Runner capable of running commands on the
 // local system directly.
 func NewLocalRunner(buildDirectory filesystem.Directory, buildDirectoryPath *path.Builder, commandCreator CommandCreator, setTmpdirEnvironmentVariable bool) runner.RunnerServer {
+	return NewLocalRunnerWithLifecycle(buildDirectory, buildDirectoryPath, commandCreator, setTmpdirEnvironmentVariable, nil)
+}
+
+// NewLocalRunnerWithLifecycle additionally contains each command and waits for
+// its descendants before returning. A nil factory preserves legacy behavior.
+func NewLocalRunnerWithLifecycle(buildDirectory filesystem.Directory, buildDirectoryPath *path.Builder, commandCreator CommandCreator, setTmpdirEnvironmentVariable bool, lifecycleFactory CommandLifecycleFactory) runner.RunnerServer {
 	return &localRunner{
 		buildDirectory:               buildDirectory,
 		buildDirectoryPath:           buildDirectoryPath,
 		commandCreator:               commandCreator,
+		lifecycleFactory:             lifecycleFactory,
 		setTmpdirEnvironmentVariable: setTmpdirEnvironmentVariable,
 	}
 }
 
-func (r *localRunner) Run(ctx context.Context, request *runner.RunRequest) (*runner.RunResponse, error) {
+func (r *localRunner) Run(ctx context.Context, request *runner.RunRequest) (response *runner.RunResponse, runErr error) {
 	if len(request.Arguments) < 1 {
 		return nil, status.Error(codes.InvalidArgument, "Insufficient number of command arguments")
 	}
@@ -148,6 +156,24 @@ func (r *localRunner) Run(ctx context.Context, request *runner.RunRequest) (*run
 	cmd, err := r.commandCreator(ctx, request.Arguments, inputRootDirectory, path.UNIXFormat.NewParser(request.WorkingDirectory), request.EnvironmentVariables["PATH"])
 	if err != nil {
 		return nil, err
+	}
+
+	var lifecycle CommandLifecycle
+	if r.lifecycleFactory != nil {
+		var err error
+		lifecycle, err = r.lifecycleFactory()
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if err := lifecycle.Finish(context.WithoutCancel(ctx)); err != nil {
+				setCompletionConfirmed(ctx, false)
+				response, runErr = nil, &CompletionUnknownError{Cause: err}
+			} else {
+				setCompletionConfirmed(ctx, true)
+			}
+		}()
+		setCompletionConfirmed(ctx, false)
 	}
 
 	// Set the environment variables.
@@ -183,13 +209,27 @@ func (r *localRunner) Run(ctx context.Context, request *runner.RunRequest) (*run
 	}
 	cmd.Stderr = stderr
 
+	if lifecycle != nil {
+		if err := lifecycle.Configure(cmd); err != nil {
+			stdout.Close()
+			stderr.Close()
+			return nil, err
+		}
+	}
+
 	// Start the subprocess. We can already close the output files
 	// while the process is running.
 	err = cmd.Start()
+	if lifecycle != nil {
+		lifecycle.Started(cmd, err)
+	}
 	stdout.Close()
 	stderr.Close()
 	if err != nil {
 		code := codes.Internal
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			code = status.FromContextError(err).Code()
+		}
 		for _, invalidArgumentErr := range invalidArgumentErrs {
 			if errors.Is(err, invalidArgumentErr) {
 				code = codes.InvalidArgument
@@ -199,6 +239,13 @@ func (r *localRunner) Run(ctx context.Context, request *runner.RunRequest) (*run
 		return nil, util.StatusWrapWithCode(err, code, "Failed to start process")
 	}
 
+	if lifecycle != nil {
+		return lifecycle.Wait(ctx, cmd)
+	}
+	return waitForCommand(cmd)
+}
+
+func waitForCommand(cmd *exec.Cmd) (*runner.RunResponse, error) {
 	// Wait for execution to complete. Permit non-zero exit codes.
 	if err := cmd.Wait(); err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
