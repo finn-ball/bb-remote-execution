@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_binary(
+    name = "bb_action_init",
+    embed = [":bb_action_init_lib"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "bb_action_init_lib",
+    srcs = ["main_linux.go"],
+    importpath = "github.com/buildbarn/bb-remote-execution/cmd/bb_action_init",
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:private"],
+    deps = select({
+        "@rules_go//go/platform:android": [
+            "//pkg/runner/pidnamespace",
+        ],
+        "@rules_go//go/platform:linux": [
+            "//pkg/runner/pidnamespace",
+        ],
+        "//conditions:default": [],
+    }),
+)

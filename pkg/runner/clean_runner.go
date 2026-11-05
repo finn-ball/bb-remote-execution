@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 
 	"github.com/buildbarn/bb-remote-execution/pkg/cleaner"
 	runner_pb "github.com/buildbarn/bb-remote-execution/pkg/proto/runner"
@@ -32,6 +33,13 @@ func (r *cleanRunner) Run(ctx context.Context, request *runner_pb.RunRequest) (*
 		return nil, err
 	}
 	response, err1 := r.base.Run(ctx, request)
+	var unknown *CompletionUnknownError
+	if errors.As(err1, &unknown) {
+		// Processes may still be using the execution environment.
+		// Retain our reference so that subsequent calls cannot
+		// trigger idle cleanup, even after other actions finish.
+		return nil, err1
+	}
 	err2 := r.idleInvoker.Release(ctx)
 	if err1 != nil {
 		return nil, err1

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package buildbarn.configuration.bb_runner;
 
+import "google/protobuf/duration.proto";
+
 import "github.com/buildbarn/bb-remote-execution/pkg/proto/configuration/credentials/credentials.proto";
 import "github.com/buildbarn/bb-storage/pkg/proto/configuration/global/global.proto";
 import "github.com/buildbarn/bb-storage/pkg/proto/configuration/grpc/grpc.proto";
@@ -135,4 +137,61 @@ message ApplicationConfiguration {
   // https://github.com/bazelbuild/bazel/blob/master/src/main/java/com/google/devtools/build/lib/exec/local/XcodeLocalEnvProvider.java
   // https://www.smileykeith.com/2021/03/08/locking-xcode-in-bazel/
   map<string, string> apple_xcode_developer_directories = 14;
+
+  // On Unix, start each command in a new process group and send SIGKILL to
+  // that group immediately when the execution context is canceled, including
+  // when its deadline expires. Applies with and without chroot. Disabled by
+  // default; enabling this on Windows is an error.
+  //
+  // Commands must keep their descendants in this process group. Descendants
+  // that create or join another process group or session are not covered.
+  // There is no grace period, cleanup after normal command exit, or guarantee
+  // that descendants have exited before the Run RPC returns. This option is
+  // not a filesystem cleanup or build directory reuse barrier.
+  bool cancel_process_group = 15;
+
+  // Linux per-attempt cgroup v2 containment. Requires a writable delegated
+  // parent, clone3(CLONE_INTO_CGROUP) and a run_commands_as UID different from
+  // the runner. Actions must not be able to write controls or migrate out.
+  // The worker must enable require_execution_completion with a timeout above
+  // cleanup_timeout. Conflicts with pid_namespace and cancel_process_group.
+  CgroupV2Configuration cgroup_v2 = 16;
+
+  // Linux per-action PID and mount namespaces. Kills remaining descendants
+  // after success, cancellation or timeout, including detached processes.
+  // Requires a root runner with namespace/mount permissions and explicit
+  // non-root run_commands_as credentials. Startup probes fail closed.
+  //
+  // Provides process cleanup, not filesystem or network isolation. Actions
+  // must not regain the runner's privileges (e.g., use no-new-privileges).
+  // With chroot_into_input_root, inputs must contain a real /proc directory.
+  // Conflicts with cgroup_v2, cancel_process_group and clean_process_table.
+  //
+  // Corresponding workers must enable require_execution_completion and set
+  // execution_completion_timeout above cleanup_timeout plus RPC latency.
+  // Unknown completion quarantines the build root. Stop remaining processes
+  // before restarting the worker or reusing its build root.
+  PidNamespaceConfiguration pid_namespace = 17;
+}
+
+message CgroupV2Configuration {
+  string parent_path = 1;
+  // Shared bound for reaping the principal and confirming populated=0.
+  // Starts on cancellation, or during cleanup after normal completion.
+  google.protobuf.Duration cleanup_timeout = 2;
+}
+
+// Actions cannot regain setuid/setgid or file capabilities. Workloads that
+// depend on these privilege gains are incompatible.
+message PidNamespaceConfiguration {
+  // Absolute path to the trusted, matching bb_action_init executable.
+  // The private JSON protocol is bounded to 48 MiB, allowing for escaping
+  // of Linux argument and environment data. Kernel execve() limits still apply.
+  string helper_path = 1;
+  // Positive bound for confirming namespace teardown, independent of the
+  // action timeout. Starts when the action reports completion, the helper is
+  // reaped, or cancellation is requested, whichever occurs first. If teardown
+  // cannot be confirmed, completion remains unknown and the worker retains
+  // the build directory until recovery.
+  google.protobuf.Duration cleanup_timeout = 2;
 }

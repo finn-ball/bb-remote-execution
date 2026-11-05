@@ -7,6 +7,7 @@
 package runner
 
 import (
+	status "google.golang.org/genproto/googleapis/rpc/status"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	anypb "google.golang.org/protobuf/types/known/anypb"
@@ -219,11 +220,153 @@ func (x *RunResponse) GetResourceUsage() []*anypb.Any {
 	return nil
 }
 
+type ExecutionControlRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Request:
+	//
+	//	*ExecutionControlRequest_Run
+	//	*ExecutionControlRequest_Cancel
+	Request       isExecutionControlRequest_Request `protobuf_oneof:"request"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecutionControlRequest) Reset() {
+	*x = ExecutionControlRequest{}
+	mi := &file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutionControlRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutionControlRequest) ProtoMessage() {}
+
+func (x *ExecutionControlRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutionControlRequest.ProtoReflect.Descriptor instead.
+func (*ExecutionControlRequest) Descriptor() ([]byte, []int) {
+	return file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ExecutionControlRequest) GetRequest() isExecutionControlRequest_Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *ExecutionControlRequest) GetRun() *RunRequest {
+	if x != nil {
+		if x, ok := x.Request.(*ExecutionControlRequest_Run); ok {
+			return x.Run
+		}
+	}
+	return nil
+}
+
+func (x *ExecutionControlRequest) GetCancel() *emptypb.Empty {
+	if x != nil {
+		if x, ok := x.Request.(*ExecutionControlRequest_Cancel); ok {
+			return x.Cancel
+		}
+	}
+	return nil
+}
+
+type isExecutionControlRequest_Request interface {
+	isExecutionControlRequest_Request()
+}
+
+type ExecutionControlRequest_Run struct {
+	Run *RunRequest `protobuf:"bytes,1,opt,name=run,proto3,oneof"`
+}
+
+type ExecutionControlRequest_Cancel struct {
+	Cancel *emptypb.Empty `protobuf:"bytes,2,opt,name=cancel,proto3,oneof"`
+}
+
+func (*ExecutionControlRequest_Run) isExecutionControlRequest_Request() {}
+
+func (*ExecutionControlRequest_Cancel) isExecutionControlRequest_Request() {}
+
+type ExecutionControlResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Result              *RunResponse           `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	ExecutionStatus     *status.Status         `protobuf:"bytes,2,opt,name=execution_status,json=executionStatus,proto3" json:"execution_status,omitempty"`
+	CompletionConfirmed bool                   `protobuf:"varint,3,opt,name=completion_confirmed,json=completionConfirmed,proto3" json:"completion_confirmed,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ExecutionControlResponse) Reset() {
+	*x = ExecutionControlResponse{}
+	mi := &file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutionControlResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutionControlResponse) ProtoMessage() {}
+
+func (x *ExecutionControlResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutionControlResponse.ProtoReflect.Descriptor instead.
+func (*ExecutionControlResponse) Descriptor() ([]byte, []int) {
+	return file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ExecutionControlResponse) GetResult() *RunResponse {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *ExecutionControlResponse) GetExecutionStatus() *status.Status {
+	if x != nil {
+		return x.ExecutionStatus
+	}
+	return nil
+}
+
+func (x *ExecutionControlResponse) GetCompletionConfirmed() bool {
+	if x != nil {
+		return x.CompletionConfirmed
+	}
+	return false
+}
+
 var File_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto protoreflect.FileDescriptor
 
 const file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_rawDesc = "" +
 	"\n" +
-	"Fgithub.com/buildbarn/bb-remote-execution/pkg/proto/runner/runner.proto\x12\x10buildbarn.runner\x1a\x19google/protobuf/any.proto\x1a\x1bgoogle/protobuf/empty.proto\"+\n" +
+	"Fgithub.com/buildbarn/bb-remote-execution/pkg/proto/runner/runner.proto\x12\x10buildbarn.runner\x1a\x19google/protobuf/any.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x17google/rpc/status.proto\"+\n" +
 	"\x15CheckReadinessRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"\xe6\x03\n" +
 	"\n" +
@@ -243,10 +386,20 @@ const file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_prot
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"g\n" +
 	"\vRunResponse\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x03R\bexitCode\x12;\n" +
-	"\x0eresource_usage\x18\x02 \x03(\v2\x14.google.protobuf.AnyR\rresourceUsage2\x9f\x01\n" +
+	"\x0eresource_usage\x18\x02 \x03(\v2\x14.google.protobuf.AnyR\rresourceUsage\"\x88\x01\n" +
+	"\x17ExecutionControlRequest\x120\n" +
+	"\x03run\x18\x01 \x01(\v2\x1c.buildbarn.runner.RunRequestH\x00R\x03run\x120\n" +
+	"\x06cancel\x18\x02 \x01(\v2\x16.google.protobuf.EmptyH\x00R\x06cancelB\t\n" +
+	"\arequest\"\xc3\x01\n" +
+	"\x18ExecutionControlResponse\x125\n" +
+	"\x06result\x18\x01 \x01(\v2\x1d.buildbarn.runner.RunResponseR\x06result\x12=\n" +
+	"\x10execution_status\x18\x02 \x01(\v2\x12.google.rpc.StatusR\x0fexecutionStatus\x121\n" +
+	"\x14completion_confirmed\x18\x03 \x01(\bR\x13completionConfirmed2\x9f\x01\n" +
 	"\x06Runner\x12Q\n" +
 	"\x0eCheckReadiness\x12'.buildbarn.runner.CheckReadinessRequest\x1a\x16.google.protobuf.Empty\x12B\n" +
-	"\x03Run\x12\x1c.buildbarn.runner.RunRequest\x1a\x1d.buildbarn.runner.RunResponseB;Z9github.com/buildbarn/bb-remote-execution/pkg/proto/runnerb\x06proto3"
+	"\x03Run\x12\x1c.buildbarn.runner.RunRequest\x1a\x1d.buildbarn.runner.RunResponse2t\n" +
+	"\x10ExecutionControl\x12`\n" +
+	"\x03Run\x12).buildbarn.runner.ExecutionControlRequest\x1a*.buildbarn.runner.ExecutionControlResponse(\x010\x01B;Z9github.com/buildbarn/bb-remote-execution/pkg/proto/runnerb\x06proto3"
 
 var (
 	file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_rawDescOnce sync.Once
@@ -260,27 +413,36 @@ func file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto
 	return file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_rawDescData
 }
 
-var file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_goTypes = []any{
-	(*CheckReadinessRequest)(nil), // 0: buildbarn.runner.CheckReadinessRequest
-	(*RunRequest)(nil),            // 1: buildbarn.runner.RunRequest
-	(*RunResponse)(nil),           // 2: buildbarn.runner.RunResponse
-	nil,                           // 3: buildbarn.runner.RunRequest.EnvironmentVariablesEntry
-	(*anypb.Any)(nil),             // 4: google.protobuf.Any
-	(*emptypb.Empty)(nil),         // 5: google.protobuf.Empty
+	(*CheckReadinessRequest)(nil),    // 0: buildbarn.runner.CheckReadinessRequest
+	(*RunRequest)(nil),               // 1: buildbarn.runner.RunRequest
+	(*RunResponse)(nil),              // 2: buildbarn.runner.RunResponse
+	(*ExecutionControlRequest)(nil),  // 3: buildbarn.runner.ExecutionControlRequest
+	(*ExecutionControlResponse)(nil), // 4: buildbarn.runner.ExecutionControlResponse
+	nil,                              // 5: buildbarn.runner.RunRequest.EnvironmentVariablesEntry
+	(*anypb.Any)(nil),                // 6: google.protobuf.Any
+	(*emptypb.Empty)(nil),            // 7: google.protobuf.Empty
+	(*status.Status)(nil),            // 8: google.rpc.Status
 }
 var file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_depIdxs = []int32{
-	3, // 0: buildbarn.runner.RunRequest.environment_variables:type_name -> buildbarn.runner.RunRequest.EnvironmentVariablesEntry
-	4, // 1: buildbarn.runner.RunResponse.resource_usage:type_name -> google.protobuf.Any
-	0, // 2: buildbarn.runner.Runner.CheckReadiness:input_type -> buildbarn.runner.CheckReadinessRequest
-	1, // 3: buildbarn.runner.Runner.Run:input_type -> buildbarn.runner.RunRequest
-	5, // 4: buildbarn.runner.Runner.CheckReadiness:output_type -> google.protobuf.Empty
-	2, // 5: buildbarn.runner.Runner.Run:output_type -> buildbarn.runner.RunResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5, // 0: buildbarn.runner.RunRequest.environment_variables:type_name -> buildbarn.runner.RunRequest.EnvironmentVariablesEntry
+	6, // 1: buildbarn.runner.RunResponse.resource_usage:type_name -> google.protobuf.Any
+	1, // 2: buildbarn.runner.ExecutionControlRequest.run:type_name -> buildbarn.runner.RunRequest
+	7, // 3: buildbarn.runner.ExecutionControlRequest.cancel:type_name -> google.protobuf.Empty
+	2, // 4: buildbarn.runner.ExecutionControlResponse.result:type_name -> buildbarn.runner.RunResponse
+	8, // 5: buildbarn.runner.ExecutionControlResponse.execution_status:type_name -> google.rpc.Status
+	0, // 6: buildbarn.runner.Runner.CheckReadiness:input_type -> buildbarn.runner.CheckReadinessRequest
+	1, // 7: buildbarn.runner.Runner.Run:input_type -> buildbarn.runner.RunRequest
+	3, // 8: buildbarn.runner.ExecutionControl.Run:input_type -> buildbarn.runner.ExecutionControlRequest
+	7, // 9: buildbarn.runner.Runner.CheckReadiness:output_type -> google.protobuf.Empty
+	2, // 10: buildbarn.runner.Runner.Run:output_type -> buildbarn.runner.RunResponse
+	4, // 11: buildbarn.runner.ExecutionControl.Run:output_type -> buildbarn.runner.ExecutionControlResponse
+	9, // [9:12] is the sub-list for method output_type
+	6, // [6:9] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_init() }
@@ -288,15 +450,19 @@ func file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto
 	if File_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto != nil {
 		return
 	}
+	file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_msgTypes[3].OneofWrappers = []any{
+		(*ExecutionControlRequest_Run)(nil),
+		(*ExecutionControlRequest_Cancel)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_rawDesc), len(file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_goTypes,
 		DependencyIndexes: file_github_com_buildbarn_bb_remote_execution_pkg_proto_runner_runner_proto_depIdxs,

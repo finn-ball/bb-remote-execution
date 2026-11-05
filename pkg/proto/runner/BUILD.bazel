@@ -8,6 +8,7 @@ proto_library(
     import_prefix = "github.com/buildbarn/bb-remote-execution",
     visibility = ["//visibility:public"],
     deps = [
+        "@googleapis//google/rpc:status_proto",
         "@protobuf//:any_proto",
         "@protobuf//:empty_proto",
     ],
@@ -22,6 +23,7 @@ go_proto_library(
     importpath = "github.com/buildbarn/bb-remote-execution/pkg/proto/runner",
     proto = ":runner_proto",
     visibility = ["//visibility:public"],
+    deps = ["@org_golang_google_genproto_googleapis_rpc//status"],
 )
 
 go_library(

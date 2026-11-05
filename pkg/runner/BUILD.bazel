@@ -1,10 +1,17 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+# gazelle:exclude pid_namespace_kernel_linux_test.go
+
 go_library(
     name = "runner",
     srcs = [
         "apple_xcode_resolving_runner.go",
+        "cgroup_command_lifecycle_linux.go",
+        "cgroup_command_lifecycle_nonlinux.go",
         "clean_runner.go",
+        "command_lifecycle.go",
+        "completion_required_runner.go",
+        "execution_control.go",
         "local_runner.go",
         "local_runner_darwin.go",
         "local_runner_rss_bytes.go",
@@ -12,6 +19,8 @@ go_library(
         "local_runner_unix.go",
         "local_runner_windows.go",
         "path_existence_checking_runner.go",
+        "pid_namespace_command_lifecycle_linux.go",
+        "pid_namespace_command_lifecycle_nonlinux.go",
         "temporary_directory_installing_runner.go",
         "temporary_directory_symlinking_runner.go",
     ],
@@ -21,9 +30,11 @@ go_library(
         "//pkg/cleaner",
         "//pkg/proto/runner",
         "//pkg/proto/tmp_installer",
+        "@com_github_buildbarn_bb_storage//pkg/clock",
         "@com_github_buildbarn_bb_storage//pkg/filesystem",
         "@com_github_buildbarn_bb_storage//pkg/filesystem/path",
         "@com_github_buildbarn_bb_storage//pkg/util",
+        "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",
         "@org_golang_google_grpc//status",
         "@org_golang_google_protobuf//proto",
@@ -32,6 +43,7 @@ go_library(
     ] + select({
         "@rules_go//go/platform:android": [
             "//pkg/proto/resourceusage",
+            "//pkg/runner/pidnamespace",
             "@org_golang_google_protobuf//types/known/durationpb",
             "@org_golang_x_sys//unix",
         ],
@@ -52,6 +64,7 @@ go_library(
         ],
         "@rules_go//go/platform:linux": [
             "//pkg/proto/resourceusage",
+            "//pkg/runner/pidnamespace",
             "@org_golang_google_protobuf//types/known/durationpb",
             "@org_golang_x_sys//unix",
         ],
@@ -69,23 +82,84 @@ go_test(
     srcs = [
         "apple_xcode_resolving_runner_test.go",
         "clean_runner_test.go",
+        "completion_test.go",
         "local_runner_test.go",
         "path_existence_checking_runner_test.go",
         "temporary_directory_symlinking_runner_test.go",
-    ],
+    ] + select({
+        "@rules_go//go/platform:android": [
+            "cgroup_command_lifecycle_internal_linux_test.go",
+            "cgroup_command_lifecycle_linux_test.go",
+            "pid_namespace_command_lifecycle_linux_test.go",
+            "process_group_command_creator_unix_test.go",
+        ],
+        "@rules_go//go/platform:darwin": [
+            "pid_namespace_command_lifecycle_nonlinux_test.go",
+            "process_group_command_creator_unix_test.go",
+        ],
+        "@rules_go//go/platform:freebsd": [
+            "pid_namespace_command_lifecycle_nonlinux_test.go",
+            "process_group_command_creator_unix_test.go",
+        ],
+        "@rules_go//go/platform:ios": [
+            "pid_namespace_command_lifecycle_nonlinux_test.go",
+            "process_group_command_creator_unix_test.go",
+        ],
+        "@rules_go//go/platform:linux": [
+            "cgroup_command_lifecycle_internal_linux_test.go",
+            "cgroup_command_lifecycle_linux_test.go",
+            "pid_namespace_command_lifecycle_linux_test.go",
+            "process_group_command_creator_unix_test.go",
+        ],
+        "@rules_go//go/platform:windows": [
+            "pid_namespace_command_lifecycle_nonlinux_test.go",
+            "process_group_command_creator_windows_test.go",
+        ],
+        "//conditions:default": [],
+    }),
+    embed = [":runner"],
     deps = [
-        ":runner",
         "//internal/mock",
         "//pkg/cleaner",
         "//pkg/proto/resourceusage",
         "//pkg/proto/runner",
+        "@com_github_buildbarn_bb_storage//pkg/clock",
         "@com_github_buildbarn_bb_storage//pkg/filesystem",
         "@com_github_buildbarn_bb_storage//pkg/filesystem/path",
         "@com_github_buildbarn_bb_storage//pkg/testutil",
         "@com_github_stretchr_testify//require",
+        "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//credentials/insecure",
         "@org_golang_google_grpc//status",
+        "@org_golang_google_grpc//test/bufconn",
         "@org_golang_google_protobuf//types/known/emptypb",
         "@org_uber_go_mock//gomock",
+    ] + select({
+        "@rules_go//go/platform:android": [
+            "//pkg/runner/pidnamespace",
+        ],
+        "@rules_go//go/platform:linux": [
+            "//pkg/runner/pidnamespace",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+# Opt-in kernel tests use a dedicated action executable.
+go_test(
+    name = "pid_namespace_kernel_test",
+    srcs = ["pid_namespace_kernel_linux_test.go"],
+    data = ["//pkg/runner/pid_namespace_test_action"],
+    embed = [":runner"],
+    env = {
+        "BB_PID_NAMESPACE_ACTION_RUNFILE_PATH": "$(rlocationpath //pkg/runner/pid_namespace_test_action)",
+    },
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "@com_github_buildbarn_bb_storage//pkg/clock",
+        "@com_github_stretchr_testify//require",
+        "@rules_go//go/runfiles",
     ],
 )
